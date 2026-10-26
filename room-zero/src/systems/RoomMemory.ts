@@ -38,6 +38,15 @@ export class RoomMemory {
     return [...this.remembered]
   }
 
+  slotsUsed(): number {
+    return this.remembered.size
+  }
+
+  /** Drops one attempt block and leaves everything else in place. */
+  releaseAttempt(id: string): boolean {
+    return this.attempt.delete(id)
+  }
+
   attemptIds(): string[] {
     return [...this.attempt]
   }

@@ -63,6 +63,7 @@ export class GameScene extends Phaser.Scene {
 
   private hud!: {
     attempts: Phaser.GameObjects.Text
+    memoryTitle: Phaser.GameObjects.Text
     remembered: Phaser.GameObjects.Text
     attempt: Phaser.GameObjects.Text
     message: Phaser.GameObjects.Text
@@ -75,6 +76,9 @@ export class GameScene extends Phaser.Scene {
   private attempts = 0
   private fullNotice = false
   private message = ''
+  private readonly expiryAt = new Map<string, number>()
+  private readonly shaking = new Set<string>()
+  private readonly triggerHeld = new Set<string>()
   private respawnTimer?: Phaser.Time.TimerEvent
   private lastGroundedAt = -Infinity
   private jumpBufferedAt = -Infinity
@@ -95,6 +99,9 @@ export class GameScene extends Phaser.Scene {
     this.completed = false
     this.blocks.clear()
     this.triggers.clear()
+    this.expiryAt.clear()
+    this.shaking.clear()
+    this.triggerHeld.clear()
     this.respawnTimer?.remove()
     this.respawnTimer = undefined
   }
@@ -137,6 +144,8 @@ export class GameScene extends Phaser.Scene {
       .setPosition(this.player.x, this.player.y)
       .setVisible(this.player.visible)
       .setAlpha(this.player.alpha * 0.22)
+    this.releaseTriggers()
+    this.tickExpiry(time)
     this.handleResetInput()
     if (this.dying || this.completed) {
       return
@@ -289,6 +298,15 @@ export class GameScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     })
     this.add.image(cx, exit.y + exit.height, ART.door).setOrigin(0.5, 1).setScale(PX).setDepth(5)
+    const fake = this.level.decoyDoor
+    if (fake) {
+      this.add
+        .image(fake.x + fake.width / 2, fake.y + fake.height, ART.door)
+        .setOrigin(0.5, 1)
+        .setScale(PX)
+        .setDepth(5)
+        .setAlpha(0.9)
+    }
   }
 
   private createPlayer(): void {
@@ -390,8 +408,35 @@ export class GameScene extends Phaser.Scene {
     runtime.glow.setTint(active ? (remembered ? TINT.remembered : TINT.attempt) : 0xe85d4c).setAlpha(active ? 0.45 : 0.25)
   }
 
+  private releaseTriggers(): void {
+    const body = this.player.body as Phaser.Physics.Arcade.Body | null
+    if (!body) {
+      return
+    }
+    for (const id of this.triggerHeld) {
+      const runtime = this.triggers.get(id)
+      if (!runtime) {
+        this.triggerHeld.delete(id)
+        continue
+      }
+      const { rect } = runtime.def
+      const overlapping =
+        body.right > rect.x &&
+        body.left < rect.x + rect.width &&
+        body.bottom > rect.y &&
+        body.top < rect.y + rect.height
+      if (!overlapping) {
+        this.triggerHeld.delete(id)
+      }
+    }
+  }
+
   private activateTrigger(def: TriggerDef): void {
-    if (this.completed || def.builds.every((id) => this.memory.isActive(id))) {
+    if (this.completed || this.triggerHeld.has(def.id)) {
+      return
+    }
+    if (def.builds.every((id) => this.memory.isActive(id))) {
+      this.triggerHeld.add(def.id)
       return
     }
     const built = def.builds.map((id) => this.block(id))
@@ -399,13 +444,15 @@ export class GameScene extends Phaser.Scene {
     if (result === 'full') {
       if (!this.fullNotice) {
         this.fullNotice = true
-        this.setMessage('The room can only remember one thing. Press F to forget.')
+        const slots = this.level.memorySlots ?? 1
+        this.setMessage(`The room can only remember ${slots} ${slots === 1 ? 'thing' : 'things'}. Press F to forget.`)
       }
       return
     }
     for (const block of built) {
       this.buildBlock(block, true)
     }
+    this.triggerHeld.add(def.id)
     this.syncTrigger(def.id)
 
     const runtime = this.triggers.get(def.id)
@@ -440,7 +487,7 @@ export class GameScene extends Phaser.Scene {
       .setTileScale(PX)
       .setDepth(6)
     if (def.style === 'wall') {
-      tile.setTint(0xb7c0e6)
+      tile.setTint(0xd5e4ff)
     }
     const visuals: BlockVisual[] = [tile]
 
@@ -462,7 +509,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     const tagStyle = labelStyle(13, remembered ? INK.remembered : INK.attempt)
-    const tagText = remembered ? '◆ remembered' : '▪ forgets on restart'
+    const timed = !remembered && def.attemptSeconds !== undefined
+    const tagText = remembered ? '◆ remembered' : timed ? '▪ falls away' : '▪ forgets on restart'
     const tag =
       def.style === 'wall' || def.style === 'step'
         ? this.add.text(rect.x + rect.width / 2, rect.y - 6, tagText, tagStyle).setOrigin(0.5, 1).setDepth(6)
@@ -471,6 +519,7 @@ export class GameScene extends Phaser.Scene {
 
     const solid = this.addSolid(rect)
     this.blocks.set(def.id, { def, solid, visuals, tag })
+    this.armExpiry(def)
 
     if (animate) {
       for (const visual of visuals) {
@@ -529,9 +578,75 @@ export class GameScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- flow
 
+  private armExpiry(def: BlockDef): void {
+    if (def.persistence !== 'attempt' || def.attemptSeconds === undefined) {
+      return
+    }
+    this.expiryAt.set(def.id, this.time.now + def.attemptSeconds * 1000)
+  }
+
+  private tickExpiry(time: number): void {
+    for (const [id, at] of this.expiryAt) {
+      if (time >= at) {
+        this.collapseBlock(id)
+        continue
+      }
+      const runtime = this.blocks.get(id)
+      if (runtime) {
+        const seconds = Math.max(1, Math.ceil((at - time) / 1000))
+        runtime.tag.setText(`▪ ${seconds}s`)
+      }
+      if (at - time <= 1000) {
+        this.shakeBlock(id)
+      }
+    }
+    if (this.expiryAt.size > 0) {
+      this.refreshHud()
+    }
+  }
+
+  private shakeBlock(id: string): void {
+    if (this.shaking.has(id)) {
+      return
+    }
+    const runtime = this.blocks.get(id)
+    if (!runtime) {
+      return
+    }
+    this.shaking.add(id)
+    this.tweens.add({
+      targets: runtime.visuals,
+      x: '+=2',
+      duration: 70,
+      yoyo: true,
+      repeat: 6,
+    })
+  }
+
+  private collapseBlock(id: string): void {
+    this.expiryAt.delete(id)
+    this.shaking.delete(id)
+    if (!this.memory.releaseAttempt(id)) {
+      return
+    }
+    const name = this.block(id).name
+    this.removeBlock(id, true)
+    this.triggers.forEach((_, triggerId) => this.syncTrigger(triggerId))
+    const kept = this.memory.rememberedIds().map((keptId) => this.block(keptId).name)
+    this.setMessage(
+      kept.length > 0
+        ? `The ${name} fell away. The room still remembers the ${kept.join(' and ')}.`
+        : `The ${name} fell away.`,
+    )
+    this.refreshHud()
+  }
+
   private startAttempt(reason: AttemptReason): void {
     this.respawnTimer?.remove()
     this.respawnTimer = undefined
+    this.expiryAt.clear()
+    this.shaking.clear()
+    this.triggerHeld.clear()
     const forgotten = reason === 'forget' ? this.memory.forget() : this.memory.startAttempt()
     forgotten.forEach((id) => this.removeBlock(id, reason !== 'first'))
     this.triggers.forEach((_, id) => this.syncTrigger(id))
@@ -744,8 +859,7 @@ export class GameScene extends Phaser.Scene {
 
     const panelX = 700
     this.add.rectangle(panelX, 14, 244, 124, 0x0b0912, 0.72).setOrigin(0).setStrokeStyle(2, 0x3d3560).setDepth(depth)
-    const slot = this.level.memorySlots ? ` · ${this.level.memorySlots} SLOT` : ''
-    this.add.text(panelX + 12, 22, `ROOM MEMORY${slot}`, labelStyle(12, INK.dim)).setDepth(depth)
+    const memoryTitle = this.add.text(panelX + 12, 22, 'ROOM MEMORY', labelStyle(12, INK.dim)).setDepth(depth)
     const remembered = this.add
       .text(panelX + 12, 40, '', { ...labelStyle(13, INK.remembered), wordWrap: { width: 220 } })
       .setDepth(depth)
@@ -782,13 +896,22 @@ export class GameScene extends Phaser.Scene {
     plate.setInteractive({ useHandCursor: true })
     plate.on('pointerdown', () => this.advance())
 
-    this.hud = { attempts, remembered, attempt, message, messageBg, banner }
+    this.hud = { attempts, memoryTitle, remembered, attempt, message, messageBg, banner }
   }
 
   private refreshHud(): void {
     this.hud.attempts.setText(`Attempt ${this.attempts}`)
+    const slots = this.level.memorySlots
+    this.hud.memoryTitle.setText(slots ? `ROOM MEMORY · ${this.memory.slotsUsed()}/${slots}` : 'ROOM MEMORY')
     const remembered = this.memory.rememberedIds().map((id) => `◆ ${this.block(id).name}`)
-    const attempt = this.memory.attemptIds().map((id) => `▪ ${this.block(id).name}`)
+    const attempt = this.memory.attemptIds().map((id) => {
+      const at = this.expiryAt.get(id)
+      if (at === undefined) {
+        return `▪ ${this.block(id).name}`
+      }
+      const seconds = Math.max(1, Math.ceil((at - this.time.now) / 1000))
+      return `▪ ${this.block(id).name} ${seconds}s`
+    })
     this.hud.remembered.setText(remembered.join('  ') || '· nothing yet').setColor(remembered.length ? INK.remembered : INK.dim)
     this.hud.attempt.setText(attempt.join('  ') || '· nothing').setColor(attempt.length ? INK.attempt : INK.dim)
   }
@@ -833,6 +956,6 @@ function textureFor(style: BlockStyle): string {
     case 'step':
       return ART.step
     case 'wall':
-      return ART.groundFill
+      return ART.step
   }
 }
