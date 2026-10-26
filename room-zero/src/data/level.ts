@@ -16,6 +16,8 @@ export interface BlockDef {
   rect: Rect
   style: BlockStyle
   persistence: Persistence
+  /** Attempt blocks only. The block collapses on its own after this many seconds. */
+  attemptSeconds?: number
 }
 
 export interface TriggerDef {
@@ -43,6 +45,8 @@ export interface LevelData {
   triggers: TriggerDef[]
   blocks: BlockDef[]
   exit: Rect
+  /** Drawn like the exit, but it has no sensor. */
+  decoyDoor?: Rect
   torches: { x: number; y: number }[]
 }
 

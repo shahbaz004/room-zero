@@ -43,6 +43,13 @@ const door = (x: number, floorTop: number): LevelData['exit'] => ({
   height: 72,
 })
 
+const slab = (x: number, width: number, top: number): LevelData['platforms'][number] => ({
+  x,
+  y: top,
+  width,
+  height: 36,
+})
+
 /**
  * Room 1 — die to remember.
  * Solution: walk into the 216px pit, touch the rune, die, cross the remembered bridge.
@@ -197,169 +204,195 @@ const room4: LevelData = {
 }
 
 /**
- * Room 5 — one memory slot. Two 216px pits.
- * Solution: fall through the right rune only, die, cross to the door.
- * Trap: the left rune fills the only slot with a bridge to a dead end. F forgets it.
+ * Room 5 — one slot, and the near fall is the wrong one.
+ * Spawn is 44px from the left lip and 204px from the right lip.
+ * The door over the alcove is only a picture. The ledge is not solid, so it cannot be reached.
+ * Solution: ignore the lit alcove, fall through the right rune, die, cross.
+ * Trap: the left rune fills the only slot with a span under a door you cannot reach. F clears it.
  */
 const room5: LevelData = {
   id: 'room-05',
   name: 'One Memory',
-  intro: 'The room remembers only one bridge.',
+  intro: 'The room keeps one change.',
   memorySlots: 1,
   spawn: { x: 480, y: 360 },
-  platforms: [floor(0, 120), floor(336, 288), floor(840, 120)],
-  pits: [pit(120, 216), pit(624, 216)],
-  spikes: [spikes(120, 216), spikes(624, 216)],
-  hazards: [hazard(120, 216), hazard(624, 216)],
+  platforms: [floor(0, 220), floor(436, 248), floor(900, 60)],
+  pits: [pit(220, 216), pit(684, 216)],
+  spikes: [spikes(220, 216), spikes(684, 216)],
+  hazards: [hazard(220, 216), hazard(684, 216)],
   triggers: [
-    { id: 'decoy', kind: 'rune', rect: { x: 130, y: 420, width: 190, height: 70 }, builds: ['decoy-span'] },
-    { id: 'true', kind: 'rune', rect: { x: 634, y: 420, width: 190, height: 70 }, builds: ['exit-span'] },
+    { id: 'decoy', kind: 'rune', rect: { x: 230, y: 420, width: 190, height: 70 }, builds: ['alcove-span'] },
+    { id: 'true', kind: 'rune', rect: { x: 694, y: 420, width: 190, height: 70 }, builds: ['far-span'] },
   ],
   blocks: [
     {
-      id: 'decoy-span',
-      name: 'dead end',
-      rect: { x: 120, y: 384, width: 216, height: 24 },
+      id: 'alcove-span',
+      name: 'alcove span',
+      rect: { x: 220, y: 384, width: 216, height: 24 },
       style: 'runestone',
       persistence: 'remembered',
     },
     {
-      id: 'exit-span',
-      name: 'exit bridge',
-      rect: { x: 624, y: 384, width: 216, height: 24 },
+      id: 'far-span',
+      name: 'far span',
+      rect: { x: 684, y: 384, width: 216, height: 24 },
       style: 'runestone',
       persistence: 'remembered',
     },
   ],
-  exit: door(880, 384),
+  exit: door(906, 384),
+  decoyDoor: door(70, 300),
   torches: [
-    { x: 420, y: 246 },
+    { x: 80, y: 168 },
+    { x: 150, y: 210 },
     { x: 560, y: 246 },
   ],
 }
 
 /**
- * Room 6 — conflict. The gap to the island is 120px (jumpable). The door ledge is
- * 96px up, so the island cannot reach it. The rune in the island shaft remembers a
- * 48px step in between. Solution: jump the gap, fall through the rune, die, jump
- * back, hop the shaft, hop to the step, hop to the door.
- * Trap: the left lever remembers a 90px wall across the gap. F forgets it.
+ * Room 6 — the pit rune remembers a bridge and a 90px wall. The amber step hops the wall
+ * and collapses after 5 seconds. A walk off the lip misses the rune; jump into it.
+ * Solution: jump to the rune, die, pull the lever, cross and hop before the step falls.
+ * Trap: the lever first remembers nothing. F after the rune forgets the bridge with the wall.
  */
 const room6: LevelData = {
   id: 'room-06',
-  name: 'The Trade',
-  intro: 'The island remembers a step. The left lever seals the gap.',
-  spawn: { x: 190, y: 360 },
-  platforms: [floor(0, 340), floor(460, 100), floor(630, 70), floor(880, 80, 288)],
-  pits: [pit(340, 120), pit(560, 70)],
-  spikes: [spikes(340, 120), spikes(560, 70)],
-  hazards: [hazard(340, 120), hazard(560, 70)],
+  name: 'The Cost',
+  intro: 'The amber step does not last.',
+  spawn: { x: 150, y: 360 },
+  platforms: [floor(0, 240), floor(456, 144), floor(870, 90)],
+  pits: [pit(240, 216)],
+  spikes: [spikes(240, 216)],
+  hazards: [hazard(240, 216)],
   triggers: [
-    { id: 'seal', kind: 'lever', rect: { x: 36, y: 348, width: 36, height: 36 }, builds: ['wall'] },
-    { id: 'rune', kind: 'rune', rect: { x: 566, y: 420, width: 58, height: 70 }, builds: ['step'] },
+    { id: 'lever', kind: 'lever', rect: { x: 40, y: 348, width: 36, height: 36 }, builds: ['step'] },
+    { id: 'rune', kind: 'rune', rect: { x: 310, y: 420, width: 130, height: 70 }, builds: ['bridge', 'wall'] },
   ],
   blocks: [
     {
+      id: 'bridge',
+      name: 'bridge',
+      rect: { x: 240, y: 384, width: 224, height: 24 },
+      style: 'runestone',
+      persistence: 'remembered',
+    },
+    {
       id: 'wall',
-      name: 'sealing wall',
-      rect: { x: 340, y: 294, width: 120, height: 90 },
+      name: 'wall',
+      rect: { x: 790, y: 294, width: 40, height: 90 },
       style: 'wall',
       persistence: 'remembered',
     },
     {
       id: 'step',
       name: 'step',
-      // Sits in the gap between the island (ends 700) and the door ledge (starts 880).
-      rect: { x: 760, y: 336, width: 80, height: 48 },
+      // 50px past the landing and 120px short of the door floor, beside the wall.
+      rect: { x: 650, y: 336, width: 100, height: 48 },
       style: 'step',
-      persistence: 'remembered',
+      persistence: 'attempt',
+      attemptSeconds: 5,
     },
   ],
-  exit: door(900, 288),
+  exit: door(890, 384),
   torches: [
-    { x: 230, y: 246 },
-    { x: 800, y: 150 },
+    { x: 120, y: 246 },
+    { x: 900, y: 246 },
   ],
 }
 
 /**
- * Room 7 — two remembered spans, then one amber span on the final attempt.
- * Three 216px gaps. The lever is on the left and is forgotten when you die.
+ * Room 7 — two slots and three remembered choices. The path needs the first two spans.
+ * The balcony rune sits above the middle island and only a jump reaches it.
+ * The last span is amber, raised from the island beside it, and lasts 4 seconds.
  * Solution: fall for the first span, die, fall for the second, die, pull the lever, cross.
- * Trap: pulling the lever early wastes it. Death forgets the amber span only.
+ * Trap: the balcony plus either span fills both slots. F clears them.
  */
 const room7: LevelData = {
   id: 'room-07',
-  name: 'Three Spans',
-  intro: 'Remember two spans, then raise the amber one.',
-  spawn: { x: 100, y: 360 },
-  platforms: [floor(0, 140), floor(788, 172)],
-  pits: [pit(140, 216), pit(356, 216), pit(572, 216)],
-  spikes: [spikes(140, 216), spikes(356, 216), spikes(572, 216)],
-  hazards: [hazard(140, 216), hazard(356, 216), hazard(572, 216)],
+  name: 'Two Slots',
+  intro: 'The room keeps two changes. The last span does not last.',
+  memorySlots: 2,
+  spawn: { x: 40, y: 360 },
+  platforms: [floor(0, 70), slab(180, 90, 248), floor(286, 110), floor(612, 70), floor(898, 62)],
+  pits: [pit(70, 216), pit(396, 216), pit(682, 216)],
+  spikes: [spikes(70, 216), spikes(396, 216), spikes(682, 216)],
+  hazards: [hazard(70, 216), hazard(396, 216), hazard(682, 216)],
   triggers: [
-    { id: 'lever', kind: 'lever', rect: { x: 24, y: 348, width: 36, height: 36 }, builds: ['span-c'] },
-    { id: 'rune-a', kind: 'rune', rect: { x: 150, y: 420, width: 190, height: 70 }, builds: ['span-a'] },
-    { id: 'rune-b', kind: 'rune', rect: { x: 366, y: 420, width: 190, height: 70 }, builds: ['span-b'] },
+    { id: 'rune-a', kind: 'rune', rect: { x: 80, y: 420, width: 190, height: 70 }, builds: ['span-a'] },
+    { id: 'balcony', kind: 'rune', rect: { x: 300, y: 270, width: 40, height: 60 }, builds: ['balcony'] },
+    { id: 'rune-b', kind: 'rune', rect: { x: 406, y: 420, width: 190, height: 70 }, builds: ['span-b'] },
+    { id: 'lever', kind: 'lever', rect: { x: 624, y: 348, width: 36, height: 36 }, builds: ['span-c'] },
   ],
   blocks: [
     {
       id: 'span-a',
       name: 'first span',
-      rect: { x: 140, y: 384, width: 216, height: 24 },
+      rect: { x: 70, y: 384, width: 216, height: 24 },
       style: 'runestone',
       persistence: 'remembered',
     },
     {
       id: 'span-b',
       name: 'second span',
-      rect: { x: 356, y: 384, width: 216, height: 24 },
+      rect: { x: 396, y: 384, width: 216, height: 24 },
       style: 'runestone',
+      persistence: 'remembered',
+    },
+    {
+      id: 'balcony',
+      name: 'balcony',
+      // Hangs above the first span. Its underside stays clear of a standing body.
+      rect: { x: 200, y: 288, width: 70, height: 32 },
+      style: 'step',
       persistence: 'remembered',
     },
     {
       id: 'span-c',
       name: 'last span',
-      rect: { x: 572, y: 384, width: 216, height: 24 },
+      rect: { x: 682, y: 384, width: 216, height: 24 },
       style: 'planks',
       persistence: 'attempt',
+      attemptSeconds: 4,
     },
   ],
-  exit: door(860, 384),
+  exit: door(904, 384),
   torches: [
-    { x: 110, y: 246 },
-    { x: 900, y: 246 },
+    { x: 200, y: 160 },
+    { x: 250, y: 160 },
+    { x: 930, y: 246 },
   ],
 }
 
 /**
- * Room 8 — order trap plus a one-slot budget. Pit is 432px, two unjumpable halves.
- * Solution: ignore the floating rune, fall through the true rune (left half of the pit),
- * die, pull the lever, cross both halves.
- * Trap: the floating rune fills the only memory. The lever's planks hide the true rune
- * until you restart. F clears a bad memory.
+ * Room 8 — one slot, an order trap, and a decoy that looks like a way up.
+ * The planks do not expire. Waiting must not uncover the rune.
+ * Spawn at 220 walks right into the pit without touching the lever or the decoy.
+ * The high step sits in the left shaft, 40px short of the floor, under a door that is 88px above it.
+ * The true rune starts at x=360, past a straight drop from the lip at 288.
+ * Solution: jump into the true rune, die, pull the lever, cross both halves.
+ * Trap: jumping at the left door fills the only slot. Planks raised first cover the rune until R.
  */
 const room8: LevelData = {
   id: 'room-08',
   name: 'The Last Room',
-  intro: 'One memory. The planks hide the true rune.',
+  intro: 'One change. Amber does not survive the fall.',
   memorySlots: 1,
-  spawn: { x: 200, y: 360 },
-  platforms: [floor(0, 288), floor(720, 240)],
-  pits: [pit(288, 432)],
-  spikes: [spikes(288, 432)],
-  hazards: [hazard(288, 432)],
+  spawn: { x: 220, y: 360 },
+  platforms: [floor(120, 168), slab(16, 90, 248), floor(720, 240)],
+  pits: [pit(0, 120), pit(288, 432)],
+  spikes: [spikes(0, 120), spikes(288, 432)],
+  hazards: [hazard(0, 120), hazard(288, 432)],
   triggers: [
-    { id: 'decoy', kind: 'rune', rect: { x: 16, y: 312, width: 48, height: 72 }, builds: ['decoy'] },
-    { id: 'lever', kind: 'lever', rect: { x: 78, y: 348, width: 36, height: 36 }, builds: ['planks'] },
-    { id: 'true', kind: 'rune', rect: { x: 300, y: 424, width: 180, height: 68 }, builds: ['exit-span'] },
+    { id: 'decoy', kind: 'rune', rect: { x: 24, y: 270, width: 48, height: 60 }, builds: ['high-step'] },
+    { id: 'lever', kind: 'lever', rect: { x: 150, y: 348, width: 36, height: 36 }, builds: ['planks'] },
+    { id: 'true', kind: 'rune', rect: { x: 360, y: 424, width: 140, height: 64 }, builds: ['exit-span'] },
   ],
   blocks: [
     {
-      id: 'decoy',
-      name: 'decoy',
-      rect: { x: 20, y: 312, width: 72, height: 24 },
-      style: 'runestone',
+      id: 'high-step',
+      name: 'high step',
+      rect: { x: 16, y: 336, width: 72, height: 48 },
+      style: 'step',
       persistence: 'remembered',
     },
     {
@@ -372,14 +405,16 @@ const room8: LevelData = {
     {
       id: 'exit-span',
       name: 'exit span',
-      rect: { x: 504, y: 384, width: 216, height: 24 },
+      rect: { x: 504, y: 384, width: 224, height: 24 },
       style: 'runestone',
       persistence: 'remembered',
     },
   ],
   exit: door(860, 384),
+  decoyDoor: door(40, 248),
   torches: [
-    { x: 140, y: 246 },
+    { x: 50, y: 160 },
+    { x: 100, y: 180 },
     { x: 820, y: 246 },
   ],
 }
